@@ -4,7 +4,15 @@ from pydantic import BaseModel
 
 from main import run_agent
 
-app = FastAPI()
+app = FastAPI(
+    title="AI Retail Brain",
+    docs_url="/docs",
+    openapi_url="/openapi.json"
+)
+
+@app.get("/")
+def root():
+    return {"message": "API is running"}
 
 class Question(BaseModel):
     question: str
