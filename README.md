@@ -99,6 +99,25 @@ POST /ask
 
 ---
 
+## 📊 Dataset
+
+This project utilizes a publicly available retail sales dataset from Kaggle:
+
+🔗 https://www.kaggle.com/datasets/mohammadtalib786/retail-sales-dataset
+
+The dataset contains structured retail transaction data, including:
+
+- Product categories  
+- Customer demographics (age, gender)  
+- Pricing information  
+- Sales quantities and total amounts  
+
+It is used to power data analysis, machine learning forecasting, and AI-driven business decision-making within the system.
+
+> ⚠️ This dataset is publicly available on Kaggle and is used in this project for demonstration purposes.
+
+---
+
 ## 📁 Project Structure
 
 ```
