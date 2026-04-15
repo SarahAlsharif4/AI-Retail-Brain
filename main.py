@@ -1,24 +1,21 @@
 import pandas as pd
 from sklearn.linear_model import LinearRegression
-from openai import OpenAI
-from langchain_openai import ChatOpenAI
 from datetime import datetime
+from langchain_openai import ChatOpenAI
+from langchain_classic.agents import AgentExecutor, create_openai_functions_agent
+from langchain.tools import tool
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_classic.memory import ConversationBufferMemory
+import os
+from dotenv import load_dotenv
 
+# Load environment variables from the .env file
+load_dotenv()
 
-# ======================
-# LOAD DATA
-# ======================
+# DATA PREP
 df = pd.read_csv("data/sales.csv")
-
-# Clean column names
 df.columns = df.columns.str.strip().str.replace(" ", "_")
-
-# Convert Date
 df["Date"] = pd.to_datetime(df["Date"])
-
-# ======================
-# MONTHLY MODEL
-# ======================
 df["Month"] = df["Date"].dt.to_period("M")
 monthly_sales = df.groupby("Month")["Quantity"].sum().reset_index()
 monthly_sales["Month_num"] = range(len(monthly_sales))
@@ -26,28 +23,17 @@ monthly_sales["Month_num"] = range(len(monthly_sales))
 # Remove incomplete month
 monthly_sales = monthly_sales.iloc[:-1]
 
+# MODEL PREP
 X = monthly_sales[["Month_num"]]
 y = monthly_sales["Quantity"]
-
 model = LinearRegression()
 model.fit(X, y)
-
 next_month = pd.DataFrame([[len(monthly_sales)]], columns=["Month_num"])
 prediction = model.predict(next_month)
-
 predicted_value = prediction[0]
 last_month_sales = monthly_sales["Quantity"].iloc[-1]
 
-current_month = datetime.now().strftime("%Y-%m")
 
-# ======================
-# SAFE GROWTH
-# ======================
-if last_month_sales == 0:
-    growth_percentage = 0
-else:
-    growth_rate = (predicted_value - last_month_sales) / last_month_sales
-    growth_percentage = round(growth_rate * 100, 2)
 
 # ======================
 # SAFE INSIGHTS (NO HALLUCINATION)
@@ -96,6 +82,55 @@ def last_data_month():
     return df["Date"].dt.to_period("M").max()
 
 # ======================
+# SAFE GROWTH CALCULATIONS
+# ======================
+if last_month_sales == 0:
+    growth_percentage = 0
+else:
+    growth_rate = (predicted_value - last_month_sales) / last_month_sales
+    growth_percentage = round(growth_rate * 100, 2)
+
+# ======================
+# TOOLS DEFINITION (The Agent's Actions)
+# ======================
+
+@tool
+def get_sales_forecast_tool():
+    """Provides the predicted sales quantity and growth percentage for the upcoming month."""
+    return {
+        "predicted_sales": round(predicted_value, 2),
+        "growth_percentage": f"{growth_percentage}%",
+        "last_month_actual_sales": last_month_sales
+    }
+
+@tool
+def get_business_performance_insights():
+    """Provides high-level insights including top/lowest product categories, genders, and best-performing combinations."""
+    return {
+        "top_category": get_top_category(),
+        "lowest_category": get_lowest_category(),
+        "top_gender": get_top_gender(),
+        "lowest_gender": get_lowest_gender(),
+        "best_performing_combo": get_top_combo(),
+        "worst_performing_combo": get_lowest_combo()
+    }
+
+@tool
+def get_pricing_and_historical_trends():
+    """Provides average price per category and historical monthly sales trends for deeper analysis."""
+    return {
+        "average_prices": average_price_by_category(),
+        "monthly_historical_sales": monthly_sales_dict(),
+        "best_month_recorded": best_month(),
+        "last_data_point_month": str(last_data_month())
+    }
+
+@tool
+def get_demographic_sales_split():
+    """Provides a detailed breakdown of total sales amounts grouped by gender and product category."""
+    return sales_by_gender_and_category()
+
+# ======================
 # PRINT BASIC OUTPUT
 # ======================
 if __name__ == "__main__":
@@ -121,110 +156,75 @@ if __name__ == "__main__":
     print("Lowest Combo:", lowest_combo)
 
     # ======================
-    # LLM EXPLANATION
-    # ======================
-    client = OpenAI()
+# NEW: START THE AGENT (Moved outside so FastAPI can see it)
+# ======================
+print("\n--- Initializing AI Retail Agent ---")
 
-    insight_prompt = f"""
-    Explain these business insights:
+# 1. Setup the LLM
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
-    Top category: {top_category}
-    Lowest category: {lowest_category}
-    Top gender: {top_gender}
-    Lowest gender: {lowest_gender}
-    Top combo: {top_combo}
-    Lowest combo: {lowest_combo}
-    """
+# 2. Define Tools list
+tools = [
+    get_sales_forecast_tool, 
+    get_business_performance_insights, 
+    get_pricing_and_historical_trends,
+    get_demographic_sales_split
+]
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": insight_prompt}]
-    )
+# 3. Setup Memory and Prompt
+memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are a highly analytical retail business assistant. You must NEVER guess or hallucinate numbers. ALWAYS use your provided tools to check the exact data before answering. If you don't know the exact number from the tools, say 'I don't have that data'."),
+    MessagesPlaceholder(variable_name="chat_history"),
+    ("user", "{input}"),
+    MessagesPlaceholder(variable_name="agent_scratchpad"),
+])
 
-    print("\nInsight Explanation:")
-    print(response.choices[0].message.content)
+# 4. Create Agent Executor
+agent = create_openai_functions_agent(llm, tools, prompt)
+agent_executor = AgentExecutor(
+    agent=agent, 
+    tools=tools, 
+    memory=memory, 
+    verbose=True, 
+    handle_parsing_errors=True
+)
+
+def run_agent(user_query: str) -> str:
+    """Function exposed for the API to call the agent"""
+    response = agent_executor.invoke({"input": user_query})
+    return response["output"]
+
+# ======================
+# PRINT BASIC OUTPUT & TERMINAL CHAT (Hidden from FastAPI)
+# ======================
+if __name__ == "__main__":
+    print("Prediction:", predicted_value)
+    print("Growth %:", growth_percentage)
+
+    print("\n=== AUTO INSIGHTS ===")
+    print("Top Category:", get_top_category())
+    print("Lowest Category:", get_lowest_category())
+    print("Top Gender:", get_top_gender())
+    print("Lowest Gender:", get_lowest_gender())
+    print("Top Combo:", get_top_combo())
+    print("Lowest Combo:", get_lowest_combo())
+
+    # 5. TEST THE AGENT
+    print("\n--- AI AGENT IS LIVE ---")
+
+    # 6. INTERACTIVE CHAT LOOP
+    print("\n--- You can now chat with the Retail Brain! (Type 'exit' to stop) ---")
     
-# ======================
-# ADVANCED AGENT
-# ======================
-llm = ChatOpenAI(model="gpt-4o-mini")
-
-# ======================
-# AGENT FUNCTION
-# ======================
-def run_agent(user_question):
-    top_category = get_top_category()
-    lowest_category = get_lowest_category()
-    top_gender = get_top_gender()
-    lowest_gender = get_lowest_gender()
-    top_combo = get_top_combo()
-    lowest_combo = get_lowest_combo()
-
-    agent_prompt = f"""
-You are an AI business agent.
-
-User question: {user_question}
-
-Available data:
-
-Sales:
-- Predicted sales: {predicted_value:.2f}
-- Last month sales: {last_month_sales}
-- Growth: {growth_percentage}%
-- Best month: {best_month()}
-
-Products:
-- Categories: {df["Product_Category"].unique().tolist()}
-
-Pricing:
-- Avg price by category: {average_price_by_category()}
-
-Advanced:
-- Sales by gender & category: {sales_by_gender_and_category()}
-
-Insights:
-- Top category: {top_category}
-- Lowest category: {lowest_category}
-
-Historical:
-- Monthly sales: {monthly_sales_dict()}
-
-Time context:
-- Current system month: {current_month}
-- Last available data month: {last_data_month()}
-
-Instructions:
-
-1. Understand the user intent
-2. If sales → give decision using growth %
-3. If trend → explain only (no action)
-4. If product/category → use product data
-5. If cross-domain → use gender & category data
-6. If question unclear → ask for clarification
-7. If data not available → say clearly
-8. If question is about past months → use historical monthly data
-9. Do NOT use predicted values for past questions
-10. Always prioritize inventory decisions over general advice
-11. Marketing is secondary, not primary
-12. If question is about multiple months → analyze historical trend, not prediction
-13. If question is about next month → refer to prediction, not calendar assumption
-14. ONLY use relevant data based on the question
-15. DO NOT mention prediction or growth unless the question is about future, forecast, or sales performance
-16. DO NOT include extra information that was not asked
-
-Rules:
-- No hallucination
-- Do NOT guess numbers
-- If spelling mistakes exist → infer meaning
-- Avoid repeating same answers
-- Max 2 sentences
-- Be precise and practical
-- Do NOT assume current month unless provided
-- Use only the dataset time for answers
-- If unknown → say "Not specified in the data"
-"""
-
-    response = llm.invoke(agent_prompt)
-    return response.content
-
-    
+    while True:
+        user_input = input("\nYou: ")
+        
+        if user_input.lower() in ["exit", "quit", "stop"]:
+            print("Closing Retail Brain. Goodbye!")
+            break
+            
+        try:
+            response = agent_executor.invoke({"input": user_input})
+            print(f"\nAgent: {response['output']}")
+        except Exception as e:
+            print(f"\nError: {e}")
