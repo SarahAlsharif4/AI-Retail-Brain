@@ -190,10 +190,30 @@ agent_executor = AgentExecutor(
     handle_parsing_errors=True
 )
 
-def run_agent(user_query: str) -> str:
-    """Function exposed for the API to call the agent"""
-    response = agent_executor.invoke({"input": user_query})
-    return response["output"]
+# 1. Dictionary to hold chat memory for different sessions
+sessions_memory = {}
+
+def run_agent(user_query: str, session_id: str = "default") -> str:
+    """
+    Runs the agent using a specific memory buffer based on session_id.
+    """
+    # 2. If this is a new session, create a new memory object for it
+    if session_id not in sessions_memory:
+        sessions_memory[session_id] = ConversationBufferMemory(
+            memory_key="chat_history", 
+            return_messages=True
+        )
+    
+    # 3. Assign the specific session's memory to the agent executor
+    # This ensures the agent "remembers" the correct person
+    agent_executor.memory = sessions_memory[session_id]
+    
+    # 4. Invoke the agent
+    try:
+        result = agent_executor.invoke({"input": user_query})
+        return result["output"]
+    except Exception as e:
+        return f"Error running agent: {str(e)}"
 
 # ======================
 # PRINT BASIC OUTPUT & TERMINAL CHAT (Hidden from FastAPI)
