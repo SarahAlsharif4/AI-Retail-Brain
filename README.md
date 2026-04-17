@@ -14,8 +14,8 @@ The system processes retail sales data, predicts future demand using predictive 
 
 ## ✨ Features
 
-- **🤖 Autonomous AI Agent:** Powered by LangChain and OpenAI, capable of dynamic tool-calling to fetch exact data without hallucination.
-- **💭 Conversational Memory:** Context-aware interactions allowing for natural follow-up questions.
+- **🤖 Autonomous AI Agent:** Powered by LangChain and OpenAI, capable of dynamic tool-calling.
+- **🧠 Multi-Session Memory:** Uses a session-based architecture to remember user context and history within a single conversation.
 - **📊 Predictive Analytics:** Machine Learning sales forecasting (Linear Regression).
 - **📈 Automated Insights:** On-demand generation of top/lowest performing categories, pricing trends, and demographic splits.
 - **🌐 RESTful API:** Robust backend built with FastAPI, including error handling and documentation.
@@ -33,7 +33,8 @@ The system consists of interconnected layers designed for scalability and accura
 2. **Predictive Modeling Layer (Scikit-learn)**
    - Utilizes Linear Regression to predict next month’s sales volume and calculate growth trajectories.
 3. **Agentic AI Layer (LangChain & OpenAI)**
-   - Acts as the "Brain." Uses prompt engineering and `AgentExecutor` to route user queries to specific Python tools (e.g., `get_sales_forecast`, `get_business_performance_insights`) ensuring 100% data accuracy.
+   - Acts as the "Brain." Uses an `AgentExecutor` combined with a `sessions_memory` dictionary.
+   - This "Locker System" maps unique `session_id`s to specific `ConversationBufferMemory` objects, ensuring the agent maintains state for multiple users simultaneously without mixing data.
 4. **API & Deployment Layer (FastAPI & Render)**
    - Exposes the agent's capabilities through secure, documented REST endpoints.
 
@@ -58,13 +59,24 @@ You can ask the Retail Brain questions such as:
 
 ```json
 {
-  "question": "What should we do next month?",
-  "password": "YOUR_ACCESS_PASSWORD"
+  "question": "What is my name?",
+  "password": "YOUR_ACCESS_PASSWORD",
+  "session_id": "sarah_session_01"
 }
 ```
 
-> 🔐 **Access Note:** > This API is password-protected to prevent unauthorized usage of the underlying OpenAI API and manage costs. Access credentials are provided upon request.
+> 🔐 **Access Note:** This API is password-protected to prevent unauthorized usage of the underlying OpenAI API and manage costs. Access credentials are provided upon request.
 
+> 💡 **Tip:** Use the same `session_id` to maintain a conversation. If you change the ID or the server restarts, the Agent will start with a fresh memory.
+
+---
+
+## 🧠 Memory & Persistence
+
+To demonstrate session management without the overhead of external databases, this project implements **In-Memory Storage**:
+- **Session Isolation:** Each user is assigned a private memory buffer based on their `session_id`.
+- **Volatility Note:** Because the system uses Render's free tier, memory is cleared if the server "spins down" (after 15 minutes of inactivity) or during new deployments.
+  
 ---
 
 ## 🌍 Live Demo
@@ -98,6 +110,7 @@ The dataset contains structured transaction data, including:
 *Note: This dataset is used strictly for demonstration and educational purposes.*
 
 ---
+
 
 ## 📁 Project Structure
 
