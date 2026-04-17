@@ -225,23 +225,22 @@ if __name__ == "__main__":
     print("Lowest Combo:", get_lowest_combo())
 
     # TEST THE AGENT
+def terminal_chat():
     print("\n--- AI AGENT IS LIVE ---")
 
-    # INTERACTIVE CHAT LOOP
-while True:
-    user_input = input("\nYou: ").strip()
+    while True:
+        user_input = input("\nYou: ").strip()
 
-    if user_input.lower() in {"exit", "quit", "stop"}:
-        print("Closing Retail Brain. Goodbye!")
-        break
+        if user_input.lower() in {"exit", "quit", "stop"}:
+            print("Closing Retail Brain. Goodbye!")
+            break
 
-    if not user_input:
-        print("Please type something.")
-        continue
+        if not user_input:
+            continue
 
-    try:
-        response = agent_executor.invoke({"input": user_input})
-        print(f"\nAgent: {response['output']}")
+        response = run_agent(user_input, session_id="local_user")
+        print(f"\nAgent: {response}")
 
-    except Exception as e:
-        print(f"\nError: {e}")
+
+if __name__ == "__main__":
+    terminal_chat()

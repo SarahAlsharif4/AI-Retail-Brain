@@ -21,7 +21,10 @@ class Question(BaseModel):
     session_id: str = "default_user"
 
 # Securely load the password from the .env file
-API_PASSWORD = os.getenv("API_PASSWORD", "test")
+API_PASSWORD = os.getenv("API_PASSWORD")
+
+if not API_PASSWORD:
+    raise RuntimeError("Missing API_PASSWORD")
 
 @app.get("/")
 def root():
@@ -29,14 +32,14 @@ def root():
 
 @app.post("/ask")
 def ask_ai(data: Question):
-    # 1. Professional Security Check
+    # Security Check
     if data.password != API_PASSWORD:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unauthorized access. Invalid password."
         )
 
-    # 2. Run the Agent with the Session ID passed correctly
+    # Run the Agent with the Session ID passed correctly
     try:
         # Pass both arguments so the agent uses the correct memory locker
         answer = run_agent(data.question, data.session_id)
